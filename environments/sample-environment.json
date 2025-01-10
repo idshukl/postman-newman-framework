@@ -1,0 +1,15 @@
+{
+	"id": "03832d06-76b6-4fee-9692-28f45ada842f",
+	"name": "sample-environment",
+	"values": [
+		{
+			"key": "hostname",
+			"value": "www.qabash.com",
+			"type": "default",
+			"enabled": true
+		}
+	],
+	"_postman_variable_scope": "environment",
+	"_postman_exported_at": "2025-01-10T18:00:31.064Z",
+	"_postman_exported_using": "Postman/11.23.3"
+}

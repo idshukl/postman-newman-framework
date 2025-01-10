@@ -1,0 +1,23 @@
+# Postman Newman Framework with Jenkins
+
+This repository automates Postman collections execution using Newman, generates test reports, and sends email notifications with the results.
+
+## Features
+- Executes Postman collections with Newman.
+- HTML report generation.
+- Jenkins pipeline to automate testing.
+- Email notifications with total, passed, and failed test cases.
+
+## Setup
+1. Clone the repository
+2. Install dependencies
+    npm install
+3. Execute tests
+    npm test
+## Jenkins Pipeline
+- Add the `Jenkinsfile` to your Jenkins job.
+- Configure the job with your repository.
+
+## Reports
+- View HTML reports in the `reports/` folder.
+

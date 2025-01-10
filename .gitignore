@@ -1,0 +1,51 @@
+# Node.js dependencies
+node_modules/
+npm-debug.log*
+
+# Environment files
+.env
+*.env
+
+# Reports and logs
+reports/
+*.log
+*.out
+
+# Postman-related files
+postman/  # If you use a dedicated folder for Postman collections
+*.postman_collection.json
+*.postman_environment.json
+
+# OS-specific files
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# IDE and editor files
+*.swp
+.idea/
+.vscode/
+*.iml
+
+# Build and temp files
+bin/
+out/
+temp/
+dist/
+*.class
+
+# Jenkins-related files
+.jenkins/
+jenkins.log
+pipeline.log
+
+# Backup files
+*.bak
+*.tmp
+*.old
+~$*
+
+# Specific to this project
+email-template.html
+package-lock.json
+output.txt
