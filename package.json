@@ -7,7 +7,7 @@
     },
     "dependencies": {
       "newman": "^5.3.2",
-      "newman-reporter-htmlextra": "^1.21.1
+      "newman-reporter-htmlextra": "^1.21.1"
     }
   }
   
