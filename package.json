@@ -6,8 +6,8 @@
       "test": "newman run collections/sample-collection.json -e environments/sample-environment.json --reporters cli,html --reporter-html-export reports/test-report.html"
     },
     "dependencies": {
-      "newman": "^5.3.2",
-      "newman-reporter-htmlextra": "^1.21.1"
+      "newman": "^6.0.0",
+      "newman-reporter-htmlextra": "^1.23.1"
     }
   }
   
