@@ -14,6 +14,7 @@ This repository automates Postman collections execution using Newman, generates 
     npm install
 3. Execute tests
     npm test
+
 ## Jenkins Pipeline
 - Add the `Jenkinsfile` to your Jenkins job.
 - Configure the job with your repository.
