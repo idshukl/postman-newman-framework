@@ -3,11 +3,11 @@
     "version": "1.0.0",
     "description": "Framework to execute Postman collections with Newman",
     "scripts": {
-      "test": "newman run collections/sample-collection.json -e environments/sample-environment.json --reporters cli,htmlextra --reporter-htmlextra-export reports/test-report.html"
+      "test": "newman run collections/sample-collection.json -e environments/sample-environment.json --reporters text,cli,htmlextra --reporter-text-export ./reports/txt/sample-collection-${BUILD_NUMBER}.txt --reporter-htmlextra-export ./reports/html/sample-collection-${BUILD_NUMBER}.html"
     },
     "dependencies": {
-      "newman": "^6.0.0",
-      "newman-reporter-htmlextra": "^1.23.1"
+        "newman": "^6.0.0",
+        "newman-reporter-htmlextra": "^1.23.1",
+        "newman-reporter-text": "^0.0.31"
     }
   }
-  
