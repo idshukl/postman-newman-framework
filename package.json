@@ -3,7 +3,7 @@
     "version": "1.0.0",
     "description": "Framework to execute Postman collections with Newman",
     "scripts": {
-      "test": "newman run collections/sample-collection.json -e environments/sample-environment.json --reporters cli,html --reporter-html-export reports/test-report.html"
+      "test": "newman run collections/sample-collection.json -e environments/sample-environment.json --reporters cli,htmlextra --reporter-htmlextra-export reports/test-report.html"
     },
     "dependencies": {
       "newman": "^6.0.0",
