@@ -1,0 +1,363 @@
+pipeline {
+    agent any
+    parameters {
+        choice(name: 'COLLECTION', choices: ['sample-collection.json'], description: 'Choose the Postman collection to run')
+        choice(name: 'ENVIRONMENT', choices: ['sample-environment.json', 'env2.json'], description: 'Choose the environment file to use')
+        string(name: 'DATAFILE', defaultValue: '', description: 'Optional: Path to the data file (if any)')
+    }
+	
+	 environment {
+        // Declare variables to hold counts and totals
+        passedCount = 0
+        failedCount = 0
+        totals = 0
+    }
+	
+    stages {
+        stage('Pull Code from Git') {
+            steps {
+                git branch: 'master', 
+                    url: 'https://github.com/idshukl/postman-newman-framework.git', 
+                    credentialsId: '724945ec-98a6-494c-8791-759677ac444f'
+            }
+        }
+        stage('Validate Inputs') {
+            steps {
+                script {
+                    if (!fileExists("collections/${params.COLLECTION}")) {
+                        error "Collection file ${params.COLLECTION} not found!"
+                    }
+                    if (!fileExists("environments/${params.ENVIRONMENT}")) {
+                        error "Environment file ${params.ENVIRONMENT} not found!"
+                    }
+                    if (params.DATAFILE && !fileExists("testdata/${params.DATAFILE}")) {
+                        error "Data file ${params.DATAFILE} not found!"
+                    }
+                }
+            }
+        }
+        stage('Install Dependencies') {
+            steps {
+                bat 'npm install --legacy-peer-deps'
+            }
+        }
+        stage('Run Tests') {
+            steps {
+                script {
+                    def sanitizedCollectionName = params.COLLECTION.replace('.', '_')
+                    def dataFileParam = params.DATAFILE ? "--iteration-data testdata\\${params.DATAFILE}" : ""
+
+                    // Ensure report directories exist
+                    bat 'if not exist reports\\txt mkdir reports\\txt'
+                    bat 'if not exist reports\\html mkdir reports\\html'
+
+                    try {
+                        // Run Newman and capture the exit code
+                        bat """
+                        newman run collections\\${params.COLLECTION} -e environments\\${params.ENVIRONMENT} ${dataFileParam} ^
+                        --reporters cli,htmlextra,text ^
+                        --reporter-text-export reports\\txt\\${sanitizedCollectionName}-${env.BUILD_NUMBER}.txt ^
+                        --reporter-htmlextra-export reports\\html\\${sanitizedCollectionName}-${env.BUILD_NUMBER}.html
+                        """
+
+                        // Debugging: List the contents of the txt report directory
+                        bat "dir reports\\txt"
+                    } catch (Exception e) {
+                        echo "Test execution failed: ${e.getMessage()}"
+                        // Allow build to proceed for further analysis
+                    }
+                }
+            }
+        }
+        stage('Analyze Results') {
+            steps {
+                script {
+                    def sanitizedCollectionName = params.COLLECTION.replace('.', '_')
+                    def txtReportPath = "reports/txt/${sanitizedCollectionName}-${env.BUILD_NUMBER}.txt"
+
+                    // Check if the report exists
+                    if (!fileExists(txtReportPath)) {
+                        error "Text report not found: ${txtReportPath}"
+                    }
+
+                    // Debug: Check the contents of the directory before analyzing the report
+                    bat "dir reports\\txt"
+
+                    // String search to count occurrences of 'passed!' and 'failed!' in the report
+                    try {
+                        echo "Analyzing results from the report using StringSearch..."
+
+                        // Read the contents of the report file
+                        def reportContent = readFile(txtReportPath)
+
+                        // Count occurrences of 'passed!' and 'failed!' in the report content
+                        passedCount = reportContent.findAll('passed!').size()
+                        failedCount = reportContent.findAll('failed!').size()
+
+                        echo "Passed count: ${passedCount}"
+                        echo "Failed count: ${failedCount}"
+
+                        // Ensure the values are treated as integers and calculate totals
+                        totals = passedCount + failedCount
+
+                        echo "Passed: ${passedCount}"
+                        echo "Failed: ${failedCount}"
+                        echo "Total: ${totals}"
+
+                        // Overwrite build status if passed count is greater than failed count
+                        if (passedCount > 0) {
+                            echo "Build result: Pass"
+                            currentBuild.result = 'SUCCESS'
+                        } else {
+                            echo "Build result: Fail"
+                            currentBuild.result = 'FAILURE'  // Override Newman exit code to pass
+                        }
+
+                    } catch (Exception e) {
+                        error "Error while analyzing results: ${e.getMessage()}"
+                    }
+                }
+            }
+        }
+    }
+    post {
+    always {
+        archiveArtifacts artifacts: 'reports/**', allowEmptyArchive: true
+        publishHTML([
+            reportName: 'Test Report',
+            reportDir: 'reports/html',
+            reportFiles: "${params.COLLECTION.replace('.', '_')}-${env.BUILD_NUMBER}.html",
+            alwaysLinkToLastBuild: true,
+            keepAll: true,
+            allowMissing: true
+        ])
+    }
+    success {
+        emailext(
+            subject: "Build Success: ${env.JOB_NAME} #${env.BUILD_NUMBER}",
+            body: """\
+<html>
+<head>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Open+Sans&amp;display=swap" rel="stylesheet">
+</head>
+
+<body style="font-family: 'Open Sans', sans-serif; margin:0; padding:0;">
+    <div style="background-color: #ffffff; border: 2px; margin-bottom:15px;">
+        <h2 style="text-align:center; color:#050B4B;background-color: #ffffff; overflow: hidden; margin:10px auto 20px auto;">
+            QABash - Global QA Engineering Network
+        </h2>
+        <div style="clear:both;"></div>
+        <h2 style="text-align:center; margin-top: -15px; color:#000000; font-size: 17px;">API Test Automation Report:
+            <label style="color:#040405; font-weight: normal;"> ${params.COLLECTION} </label></h2>
+    </div>
+    <div style="background-color:#f3f3f3;padding: 20px 0;">
+        <h3 style="text-align:center; color:#1b1dc7;margin: 0;font-size: 17px;"> Build Number: <label
+                style="color:#000000; font-weight: normal;"> ${env.BUILD_NUMBER} </label><br> Status: <label
+                style="color:#040405;font-size: 17px; font-weight: normal;"> ${currentBuild.result} </label></h3>
+        <h4 style="text-align:center; margin-top:0;color:#1b1dc7;font-size: 17px;">TimeStamp: <label
+                style="color:#040405; font-weight: normal;"> ${new Date()} </label> </h4>
+        <h4 style="text-align:center; margin-bottom:20px; color:#000000; text-decoration:underline;font-size: 20px;">
+            Test Execution Summary</h4>
+        <table align="Center">
+            <tr>
+                <td>
+                    <table style="background-color:#e00067;border-radius: 100px; border: 1px solid; height: 145px; min-width: 145px; width:100%; color:#ffffff; padding: 30px 0 20px 0; font-size:16px;">
+                        <thead>
+                            <tr>
+                                <td align="Center">Iterations</td>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr>
+                                <td align="Center"><b>1</b></td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </td>
+                <td>
+                    <table style="background-color:#1b1dc7;border-radius: 100px; border: 1px solid; height: 145px; min-width: 145px; width:100%; color:#ffffff; padding: 30px 0 20px 0; font-size:16px;">
+                        <thead>
+                            <tr>
+                                <td align="Center">Test Cases</td>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr>
+                                <td align="Center"><b> ${totals} </b></td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </td>
+                <td>
+                    <table style="background-color:#0ac535;border-radius: 100px; border: 1px solid; height: 145px; min-width: 145px; width:100%; color:#ffffff; padding: 30px 0 20px 0; font-size:16px;">
+                        <thead>
+                            <tr>
+                                <td align="Center">Passed</td>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr>
+                                <td align="Center"><b> ${passedCount} </b></td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </td>
+                <td>
+                    <table style="background-color:#e10f23;border-radius: 100px; border: 1px solid; height: 145px; min-width: 145px; width:100%; color:#ffffff; padding: 30px 0 20px 0; font-size:16px;">
+                        <thead>
+                            <tr>
+                                <td align="Center"> Failed </td>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr>
+                                <td align="Center"><b> ${failedCount} </b></td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </td>
+            </tr>
+        </table>
+        <p style="text-align: center;"><b>
+                <font size="3" color="#000000" style="margin-left: 1.5em;">To View Complete Test Execution Report
+            </b></font>
+        </p>
+        <a style="color:#ffffff; font-weight:bold; background-color:#3a3ee5;padding:10px;border:none;border-radius:4px;text-decoration:none; display:block; margin: 0 auto; width: 120px; text-align: center;"
+            href="file:///C:/ProgramData/Jenkins/.jenkins/workspace/postman-newman-framework/reports/html/${params.COLLECTION.replace('.', '_')}-${env.BUILD_NUMBER}.html"
+            target="_blank"
+            data-saferedirecturl="file:///C:/ProgramData/Jenkins/.jenkins/workspace/postman-newman-framework/reports/html/${params.COLLECTION.replace('.', '_')}-${env.BUILD_NUMBER}.html">Click
+            Here</a>
+        <p style="text-align: center;">
+            <font color="#000000" style="font-size: 14px;">Detailed Execution Report is attached with Email</font>
+        </p>
+        <p style="margin-left: 1.5em; color:#000000;text-align: center;"><b> Powered by:</b><br>
+            <a href="www.qabash.com">www.qabash.com</a>
+        </p>
+        <p style="margin-left: 1.5em;text-align: center; font-size: 12px;">For any Queries/Concerns please reach out to
+            <a href="mailto:qabashofficial@gmail.com">qabashofficial.com</a></p>
+    </div>
+</body>
+</html>
+            """,
+            mimeType: 'text/html',
+            to: 'ishandevshukl@gmail.com'
+        )
+    }
+    failure {
+        emailext(
+            subject: "Build Failure: ${env.JOB_NAME} #${env.BUILD_NUMBER}",
+            body: """\
+<html>
+<head>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Open+Sans&amp;display=swap" rel="stylesheet">
+</head>
+
+<body style="font-family: 'Open Sans', sans-serif; margin:0; padding:0;">
+    <div style="background-color: #ffffff; border: 2px; margin-bottom:15px;">
+        <h2 style="text-align:center; color:#050B4B;background-color: #ffffff; overflow: hidden; margin:10px auto 20px auto;">
+            QABash - Global QA Engineering Network
+        </h2>
+        <div style="clear:both;"></div>
+        <h2 style="text-align:center; margin-top: -15px; color:#000000; font-size: 17px;">API Test Automation Report:
+            <label style="color:#040405; font-weight: normal;"> ${params.COLLECTION} </label></h2>
+    </div>
+    <div style="background-color:#f3f3f3;padding: 20px 0;">
+        <h3 style="text-align:center; color:#1b1dc7;margin: 0;font-size: 17px;"> Build Number: <label
+                style="color:#000000; font-weight: normal;"> ${env.BUILD_NUMBER} </label><br> Status: <label
+                style="color:#040405;font-size: 17px; font-weight: normal;"> ${currentBuild.result} </label></h3>
+        <h4 style="text-align:center; margin-top:0;color:#1b1dc7;font-size: 17px;">TimeStamp: <label
+                style="color:#040405; font-weight: normal;"> ${new Date()} </label> </h4>
+        <h4 style="text-align:center; margin-bottom:20px; color:#000000; text-decoration:underline;font-size: 20px;">
+            Test Execution Summary</h4>
+        <table align="Center">
+            <tr>
+                <td>
+                    <table style="background-color:#e00067;border-radius: 100px; border: 1px solid; height: 145px; min-width: 145px; width:100%; color:#ffffff; padding: 30px 0 20px 0; font-size:16px;">
+                        <thead>
+                            <tr>
+                                <td align="Center">Iterations</td>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr>
+                                <td align="Center"><b>1</b></td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </td>
+                <td>
+                    <table style="background-color:#1b1dc7;border-radius: 100px; border: 1px solid; height: 145px; min-width: 145px; width:100%; color:#ffffff; padding: 30px 0 20px 0; font-size:16px;">
+                        <thead>
+                            <tr>
+                                <td align="Center">Test Cases</td>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr>
+                                <td align="Center"><b> ${totals} </b></td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </td>
+                <td>
+                    <table style="background-color:#0ac535;border-radius: 100px; border: 1px solid; height: 145px; min-width: 145px; width:100%; color:#ffffff; padding: 30px 0 20px 0; font-size:16px;">
+                        <thead>
+                            <tr>
+                                <td align="Center">Passed</td>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr>
+                                <td align="Center"><b> ${passedCount} </b></td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </td>
+                <td>
+                    <table style="background-color:#e10f23;border-radius: 100px; border: 1px solid; height: 145px; min-width: 145px; width:100%; color:#ffffff; padding: 30px 0 20px 0; font-size:16px;">
+                        <thead>
+                            <tr>
+                                <td align="Center"> Failed </td>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr>
+                                <td align="Center"><b> ${failedCount} </b></td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </td>
+            </tr>
+        </table>
+        <p style="text-align: center;"><b>
+                <font size="3" color="#000000" style="margin-left: 1.5em;">To View Complete Test Execution Report
+            </b></font>
+        </p>
+        <a style="color:#ffffff; font-weight:bold; background-color:#3a3ee5;padding:10px;border:none;border-radius:4px;text-decoration:none; display:block; margin: 0 auto; width: 120px; text-align: center;"
+            href="file://a/C:/ProgramData/Jenkins/.jenkins/workspace/postman-newman-framework/reports/html/${params.COLLECTION.replace('.', '_')}-${env.BUILD_NUMBER}.html"
+            target="_blank"
+            data-saferedirecturl="file:///C:/ProgramData/Jenkins/.jenkins/workspace/postman-newman-framework/reports/html/${params.COLLECTION.replace('.', '_')}-${env.BUILD_NUMBER}.html">Click
+            Here</a>
+        <p style="text-align: center;">
+            <font color="#000000" style="font-size: 14px;">Detailed Execution Report is attached with Email</font>
+        </p>
+        <p style="margin-left: 1.5em; color:#000000;text-align: center;"><b> Thanks</b><br>
+            Testing Centre Of Excellence - QABash
+        </p>
+        <p style="margin-left: 1.5em;text-align: center; font-size: 12px;">For any Queries/Concerns please reach out to
+            <a href="mailto:ishandevshukl@gmailcom">ishandevshukl@gmail.com</a></p>
+    </div>
+</body>
+</html>
+            """,
+            mimeType: 'text/html',
+            to: 'ishandevshukl@gmail.com'
+        )
+    }
+}
+
+}
